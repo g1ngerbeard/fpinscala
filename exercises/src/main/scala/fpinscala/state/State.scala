@@ -29,11 +29,16 @@ object RNG {
 
   def map[A, B](s: Rand[A])(f: A => B): Rand[B] = flatMap(s)(a => unit(f(a)))
 
+  def boolean(rng: RNG): (Boolean, RNG) =
+    rng.nextInt match { case (i,rng2) => (i%2==0,rng2) }
+
   def nonNegativeInt(rng: RNG): (Int, RNG) = rng.nextInt match {
     case (Int.MinValue, r) => nonNegativeInt(r)
     case (i, r) if i < 0 => (-1 * i, r)
     case p => p
   }
+
+  def boundedInt(start: Int, end: Int): Rand[Int] = map(nonNegativeLessThan(end - start))(_ + start)
 
   val double: Rand[Double] = map(nonNegativeInt)(i => i.toDouble / Int.MaxValue)
 
