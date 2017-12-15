@@ -21,42 +21,45 @@ object Par {
   def lazyUnit[A](a: => A): Par[A] = (es: ExecutorService) => es.submit(() => a)
 
   private case class UnitFuture[A](get: A) extends Future[A] {
-    def isDone = true
-    def get(timeout: Long, units: TimeUnit) = get
-    def isCancelled = false
+    def isDone                                  = true
+    def get(timeout: Long, units: TimeUnit)     = get
+    def isCancelled                             = false
     def cancel(evenIfRunning: Boolean): Boolean = false
   }
 
-  private case class CompositeFuture[A, B, C](af: Future[A], bf: Future[B])(cm: (A,B) => C) extends Future[C] {
-    def cancel(mayInterruptIfRunning: Boolean): Boolean = af.cancel(mayInterruptIfRunning) && bf.cancel(mayInterruptIfRunning)
+  private case class CompositeFuture[A, B, C](af: Future[A], bf: Future[B])(cm: (A, B) => C) extends Future[C] {
+    def cancel(mayInterruptIfRunning: Boolean): Boolean =
+      af.cancel(mayInterruptIfRunning) && bf.cancel(mayInterruptIfRunning)
     def isCancelled: Boolean = af.isCancelled && bf.isCancelled
-    def isDone: Boolean = af.isDone && bf.isDone
-    def get(): C = cm(af.get(), bf.get())
+    def isDone: Boolean      = af.isDone && bf.isDone
+    def get(): C             = cm(af.get(), bf.get())
     def get(timeout: Long, unit: TimeUnit): C = {
       val (a, duration) = evaluate(af.get(timeout, unit))
-      val remaining = FiniteDuration(timeout, unit) - duration
-      val b = bf.get(remaining.length, remaining.unit)
+      val remaining     = FiniteDuration(timeout, unit) - duration
+      val b             = bf.get(remaining.length, remaining.unit)
 
       cm(a, b)
     }
 
-    private def evaluate[R](ex: => R):(R, FiniteDuration) = {
-      val start = System.currentTimeMillis()
+    private def evaluate[R](ex: => R): (R, FiniteDuration) = {
+      val start  = System.currentTimeMillis()
       val result = ex
-      val end = System.currentTimeMillis() - start
+      val end    = System.currentTimeMillis() - start
       (result, FiniteDuration(end, MILLISECONDS))
     }
   }
 
-  def asyncF[A,B](f: A => B): A => Par[B] = a => lazyUnit(f(a))
+  def asyncF[A, B](f: A => B): A => Par[B] = a => lazyUnit(f(a))
 
   // `map2` doesn't evaluate the call to `f` in a separate logical thread, in accord with our design choice of having `fork` be the sole function in the API for controlling parallelism. We can always do `fork(map2(a,b)(f))` if we want the evaluation of `f` to occur in a separate thread.
-  def map2[A,B,C](a: Par[A], b: Par[B])(f: (A,B) => C): Par[C] =
+  def map2[A, B, C](a: Par[A], b: Par[B])(f: (A, B) => C): Par[C] =
     (es: ExecutorService) => {
       val af: Future[A] = a(es)
       val bf: Future[B] = b(es)
       CompositeFuture(af, bf)(f)
     }
+
+  def equal[A](p1: Par[A], p2: Par[A]): Par[Boolean] = map2(p1, p2)(_ == _)
 
   def sequence[A](ps: List[Par[A]]): Par[List[A]] = ps.foldLeft(unit(empty[A]))((rp, p) => map2(rp, p)(_ :+ _))
 
@@ -68,18 +71,19 @@ object Par {
   def parFilter[A](as: List[A])(f: A => Boolean): Par[List[A]] = ???
 
   def fork[A](a: => Par[A]): Par[A] =
-  // This is the simplest and most natural implementation of `fork`, but there are some problems with it--for one, the outer `Callable` will block waiting for the "inner" task to complete. Since this blocking occupies a thread in our thread pool, or whatever resource backs the `ExecutorService`, this implies that we're losing out on some potential parallelism. Essentially, we're using two threads when one should suffice. This is a symptom of a more serious problem with the implementation, and we will discuss this later in the chapter.
-    es => es.submit(new Callable[A] {
-      def call = a(es).get
-    })
+    // This is the simplest and most natural implementation of `fork`, but there are some problems with it--for one, the outer `Callable` will block waiting for the "inner" task to complete. Since this blocking occupies a thread in our thread pool, or whatever resource backs the `ExecutorService`, this implies that we're losing out on some potential parallelism. Essentially, we're using two threads when one should suffice. This is a symptom of a more serious problem with the implementation, and we will discuss this later in the chapter.
+    es =>
+      es.submit(new Callable[A] {
+        def call = a(es).get
+      })
 
-  def map[A,B](pa: Par[A])(f: A => B): Par[B] =
-    map2(pa, unit(()))((a,_) => f(a))
+  def map[A, B](pa: Par[A])(f: A => B): Par[B] =
+    map2(pa, unit(()))((a, _) => f(a))
 
   def sortPar(parList: Par[List[Int]]) = map(parList)(_.sorted)
 
-  def equal[A](e: ExecutorService)(p: Par[A], p2: Par[A]): Boolean =
-    p(e).get == p2(e).get
+//  def equal[A](e: ExecutorService)(p: Par[A], p2: Par[A]): Boolean =
+//    p(e).get == p2(e).get
 
   def delay[A](fa: => Par[A]): Par[A] =
     es => fa(es)
@@ -92,10 +96,7 @@ object Par {
   /* Gives us infix syntax for `Par`. */
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
 
-  class ParOps[A](p: Par[A]) {
-
-
-  }
+  class ParOps[A](p: Par[A]) {}
 }
 
 //object ParTest extends App {
@@ -122,7 +123,7 @@ object Examples {
     if (ints.size <= 1)
       ints.headOption getOrElse 0 // `headOption` is a method defined on all collections in Scala. We saw this function in chapter 3.
     else {
-      val (l,r) = ints.splitAt(ints.length/2) // Divide the sequence in half using the `splitAt` function.
+      val (l, r) = ints.splitAt(ints.length / 2) // Divide the sequence in half using the `splitAt` function.
       sum(l) + sum(r) // Recursively sum both halves and add the results together.
     }
 
