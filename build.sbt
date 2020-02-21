@@ -1,5 +1,5 @@
 val commonSettings = Seq(
-  scalaVersion := "2.12.1"
+  scalaVersion := "2.13.1"
 )
 
 lazy val root = (project in file("."))
@@ -20,3 +20,10 @@ lazy val answers = (project in file("answers"))
   .settings(
     name := "answers"
   )
+
+lazy val tests = (project in file("tests"))
+  .settings(commonSettings)
+  .settings(
+    name := "tests"
+  )
+  .dependsOn(exercises)

@@ -5,7 +5,8 @@ import fpinscala.testing._
 
 import language.higherKinds
 
-trait Parsers[Parser[+ _]] { self => // so inner classes may call methods of trait
+trait Parsers[Parser[+_]] {
+  self => // so inner classes may call methods of trait
 
   def run[A](p: Parser[A])(input: String): Either[ParseError, A]
 
@@ -24,9 +25,13 @@ trait Parsers[Parser[+ _]] { self => // so inner classes may call methods of tra
   def slice[A](p: Parser[A]): Parser[String]
 
   def succeed[A](a: A): Parser[A] = string("").map(_ => a)
+
   implicit def char(c: Char): Parser[Char]
+
   implicit def string(s: String): Parser[String]
-  implicit def operators[A](p: Parser[A]): ParserOps[A]                                    = ParserOps[A](p)
+
+  implicit def operators[A](p: Parser[A]): ParserOps[A] = ParserOps[A](p)
+
   implicit def asStringParser[A](a: A)(implicit f: A => Parser[String]): ParserOps[String] = ParserOps(f(a))
 
   def product[A, B](p: Parser[A], p2: Parser[B]): Parser[(A, B)]
@@ -34,7 +39,8 @@ trait Parsers[Parser[+ _]] { self => // so inner classes may call methods of tra
   def zeroOrMore(head: Char, tail: Char): Parser[(Int, Int)]
 
   case class ParserOps[A](p: Parser[A]) {
-    def |[B >: A](p2: => Parser[B]): Parser[B]  = self.or(p, p2)
+    def |[B >: A](p2: => Parser[B]): Parser[B] = self.or(p, p2)
+
     def or[B >: A](p2: => Parser[B]): Parser[B] = self.or(p, p2)
 
     def **[B](p2: Parser[B]): Parser[(A, B)] = self.product(p, p2)
@@ -51,19 +57,19 @@ trait Parsers[Parser[+ _]] { self => // so inner classes may call methods of tra
 
   object Laws {
 
-//    run(or(string("abra"), string("cadabra")))("abra") == Right("abra")
-//    run(or(string("abra"), string("cadabra")))("cadabra") == Right("cadabra")
-//
-//    run(listOfN(3, "ab" | "cad"))("ababcad") == Right("ababcad")
-//    run(listOfN(3, "ab" | "cad"))("cadabab") == Right("cadabab")
-//    run(listOfN(3, "ab" | "cad"))("ababab") == Right("ababab")
+    //    run(or(string("abra"), string("cadabra")))("abra") == Right("abra")
+    //    run(or(string("abra"), string("cadabra")))("cadabra") == Right("cadabra")
+    //
+    //    run(listOfN(3, "ab" | "cad"))("ababcad") == Right("ababcad")
+    //    run(listOfN(3, "ab" | "cad"))("cadabab") == Right("cadabab")
+    //    run(listOfN(3, "ab" | "cad"))("ababab") == Right("ababab")
 
-//    map(p)(a => a) == p
+    //    map(p)(a => a) == p
 
-//    val numA: Parser[Int] = char('a').many.map(_.size)
+    //    val numA: Parser[Int] = char('a').many.map(_.size)
 
-//    run(numA)("aaa") == Right(3)
-//    run(numA)("b") == Right(0)
+    //    run(numA)("aaa") == Right(3)
+    //    run(numA)("b") == Right(0)
 
     val manyAmanyB: Parser[(Int, Int)] = char('a').many.slice.map(_.length) ** char('b').many1.slice.map(_.length)
 
@@ -71,9 +77,11 @@ trait Parsers[Parser[+ _]] { self => // so inner classes may call methods of tra
 
     def mapLaw[A](p: Parser[A])(in: Gen[String]): Prop = equal(p, p.map(a => a))(in)
 
+    def productLaw[A](p1: Parser[A], p2: Parser[A]): Prop = ???
+
     run(succeed(1) ** succeed(2))("123") == Right((1, 2))
 
-//    def productLaw[A](p: Parser[A])(in: Gen[String]): Prop = equal(, p ** p)(in)
+    //    def productLaw[A](p: Parser[A])(in: Gen[String]): Prop = equal(, p ** p)(in)
 
   }
 
@@ -82,7 +90,7 @@ trait Parsers[Parser[+ _]] { self => // so inner classes may call methods of tra
 case class Location(input: String, offset: Int = 0) {
 
   lazy val line = input.slice(0, offset + 1).count(_ == '\n') + 1
-  lazy val col  = input.slice(0, offset + 1).reverse.indexOf('\n')
+  lazy val col = input.slice(0, offset + 1).reverse.indexOf('\n')
 
   def toError(msg: String): ParseError =
     ParseError(List((this, msg)))
@@ -90,9 +98,9 @@ case class Location(input: String, offset: Int = 0) {
   def advanceBy(n: Int) = copy(offset = offset + n)
 
   /* Returns the line corresponding to this location */
-  def currentLine: String =
-    if (input.length > 1) input.lines.drop(line - 1).next
-    else ""
+  def currentLine: String = ???
+//    if (input.length > 1) input.lines.skip(line - 1)
+//    else ""
 }
 
 case class ParseError(stack: List[(Location, String)] = List(), otherFailures: List[ParseError] = List()) {}
