@@ -21,9 +21,9 @@ lazy val answers = (project in file("answers"))
     name := "answers"
   )
 
-lazy val tests = (project in file("tests"))
-  .settings(commonSettings)
-  .settings(
-    name := "tests"
-  )
-  .dependsOn(exercises)
+//lazy val tests = (project in file("tests"))
+//  .settings(commonSettings)
+//  .settings(
+//    name := "tests"
+//  )
+//  .dependsOn(exercises)
