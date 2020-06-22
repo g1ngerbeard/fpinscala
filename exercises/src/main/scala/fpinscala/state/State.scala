@@ -29,6 +29,8 @@ object RNG {
 
   def map[A, B](s: Rand[A])(f: A => B): Rand[B] = flatMap(s)(a => unit(f(a)))
 
+  val asciiChar: Rand[Char] = map(boundedInt(-128, 127))(_.toChar)
+
   def boolean(rng: RNG): (Boolean, RNG) =
     rng.nextInt match { case (i,rng2) => (i%2==0,rng2) }
 

@@ -1,8 +1,12 @@
 package fpinscala.monoids
 
 import fpinscala.parallelism.Nonblocking._
-import fpinscala.parallelism.Nonblocking.Par.toParOps // infix syntax for `Par.map`, `Par.flatMap`, etc
+import fpinscala.state.RNG.Simple
+import fpinscala.testing.Prop._
+import fpinscala.testing.Gen
+
 import language.higherKinds
+import scala.util.Random
 
 trait Monoid[A] {
   def op(a1: A, a2: A): A
@@ -13,60 +17,65 @@ object Monoid {
 
   val stringMonoid = new Monoid[String] {
     def op(a1: String, a2: String) = a1 + a2
-    val zero = ""
+    val zero                       = ""
   }
 
   def listMonoid[A] = new Monoid[List[A]] {
     def op(a1: List[A], a2: List[A]) = a1 ++ a2
-    val zero = Nil
+    val zero                         = Nil
   }
 
   val intAddition: Monoid[Int] = new Monoid[Int] {
     override def op(a1: Int, a2: Int): Int = a1 + a2
-    val zero: Int = 0
+    val zero: Int                          = 0
   }
 
   val intMultiplication: Monoid[Int] = new Monoid[Int] {
     def op(a1: Int, a2: Int): Int = a1 * a2
-    val zero: Int = 1
+    val zero: Int                 = 1
   }
 
   val booleanOr: Monoid[Boolean] = new Monoid[Boolean] {
     def op(a1: Boolean, a2: Boolean): Boolean = a1 || a2
-    val zero: Boolean = false
+    val zero: Boolean                         = false
   }
 
   val booleanAnd: Monoid[Boolean] = new Monoid[Boolean] {
     def op(a1: Boolean, a2: Boolean): Boolean = a1 && a2
-    val zero: Boolean = true
+    val zero: Boolean                         = true
   }
 
   def optionMonoid[A: Monoid]: Monoid[Option[A]] = new Monoid[Option[A]] {
     def op(a1: Option[A], a2: Option[A]): Option[A] =
       (a1, a2) match {
         case (Some(value1), Some(value2)) => Some(implicitly[Monoid[A]].op(value1, value2))
-        case (someValue1, None) => someValue1
-        case (_, someValue2) => someValue2
+        case (someValue1, None)           => someValue1
+        case (_, someValue2)              => someValue2
       }
     def zero: Option[A] = Option.empty
   }
 
   def endoMonoid[A]: Monoid[A => A] = new Monoid[A => A] {
     def op(a1: A => A, a2: A => A): A => A = a1 andThen a2
-    def zero: A => A = identity
+    def zero: A => A                       = identity
   }
 
-  // TODO: Placeholder for `Prop`. Remove once you have implemented the `Prop`
-  // data type from Part 2.
-    trait Prop {}
+  def flip[A](m: Monoid[A]): Monoid[A] = new Monoid[A] {
+    def op(a1: A, a2: A): A = m.op(a2, a1)
+    def zero: A             = m.zero
+  }
 
-  // TODO: Placeholder for `Gen`. Remove once you have implemented the `Gen`
-  // data type from Part 2.
+  def monoidLaws[A](m: Monoid[A], gen: Gen[A]): Prop =
+    identityLaw(m, gen) && associativityLaw(m, gen)
 
-  import fpinscala.testing._
+  def identityLaw[A](m: Monoid[A], gen: Gen[A]): Prop = forAll(gen) { a =>
+    m.op(m.zero, a) == a && m.op(a, m.zero) == a
+  }
 
-//  def monoidLaws[A](m: Monoid[A], gen: Gen[A]): Prop = ???
-//
+  def associativityLaw[A](m: Monoid[A], gen: Gen[A]): Prop = forAll(gen ** gen ** gen) {
+    case ((a, b), c) => m.op(m.op(a, b), c) == m.op(a, m.op(b, c))
+  }
+
 //  def trimMonoid(s: String): Monoid[String] = ???
 //
 //  def concatenate[A](as: List[A], m: Monoid[A]): A =
@@ -75,39 +84,68 @@ object Monoid {
   def foldMap[A, B](as: List[A], m: Monoid[B])(f: A => B): B =
     as.map(f).foldLeft(m.zero)(m.op)
 
-  def foldRight[A, B](as: List[A])(z: B)(f: (A, B) => B): B = ???
-//    foldMap(as.map(f(a, ???)), ???)((a: A) => f(a, ???))
+  def foldRight[A, B](as: List[A])(z: B)(f: (A, B) => B): B =
+    foldMap(as, endoMonoid[B])(a => f(a, _))(z)
 
   def foldLeft[A, B](as: List[A])(z: B)(f: (B, A) => B): B =
-    ???
+    foldMap(as, flip(endoMonoid[B]))(a => f(_, a))(z)
 
   def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B =
-    ???
+    if (as.size < 2) {
+      foldMap(as.toList, m)(f)
+    } else {
+      val (lAs, rAs) = as.splitAt(as.size / 2)
+      m.op(foldMapV(lAs, m)(f), foldMapV(rAs, m)(f))
+    }
 
   def ordered(ints: IndexedSeq[Int]): Boolean =
     ???
 
   sealed trait WC
-  case class Stub(chars: String) extends WC
+  case class Stub(chars: String)                            extends WC
   case class Part(lStub: String, words: Int, rStub: String) extends WC
 
-  def par[A](m: Monoid[A]): Monoid[Par[A]] = 
-    ???
+  import fpinscala.parallelism.Nonblocking._
+  import fpinscala.parallelism.Nonblocking.Par._
 
-  def parFoldMap[A,B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] = 
-    ???
+  def par[A](m: Monoid[A]): Monoid[Par[A]] =
+    new Monoid[Par[A]] {
+      def op(a1: Par[A], a2: Par[A]): Par[A] = a1.map2(a2)(m.op)
+      def zero: Par[A]                       = Par.unit(m.zero)
+    }
 
-  val wcMonoid: Monoid[WC] = ???
+  // fixme: no parMap for Nonblocking Par
+  def parFoldMap[A, B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] =
+    foldMapV(v, par(m))(a => Par.delay(f(a)))
+
+  //    Par
+//      .flatMap(Par.sequenceBalanced(v.map(a => Par.delay(f(a))))) { s =>
+//        .sequenceBalanced(
+
+
+//          v.map(a => )(a => Par.delay(f(a))))
+//        )
+
+//      }
+
+//    if (v.size < 2) {
+//      Par.delay(foldMap(v.toList, m)(f))
+//    } else {
+//      val (lAs, rAs) = v.splitAt(v.size / 2)
+//      par(m).op(parFoldMap(lAs, m)(f), parFoldMap(rAs, m)(f))
+//    }
+
+  //  val wcMonoid: Monoid[WC] = ???
 
   def count(s: String): Int = ???
 
-  def productMonoid[A,B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
+  def productMonoid[A, B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
     ???
 
-  def functionMonoid[A,B](B: Monoid[B]): Monoid[A => B] =
+  def functionMonoid[A, B](B: Monoid[B]): Monoid[A => B] =
     ???
 
-  def mapMergeMonoid[K,V](V: Monoid[V]): Monoid[Map[K, V]] =
+  def mapMergeMonoid[K, V](V: Monoid[V]): Monoid[Map[K, V]] =
     ???
 
   def bag[A](as: IndexedSeq[A]): Map[A, Int] =
@@ -159,7 +197,7 @@ object StreamFoldable extends Foldable[Stream] {
 }
 
 sealed trait Tree[+A]
-case class Leaf[A](value: A) extends Tree[A]
+case class Leaf[A](value: A)                        extends Tree[A]
 case class Branch[A](left: Tree[A], right: Tree[A]) extends Tree[A]
 
 object TreeFoldable extends Foldable[Tree] {
@@ -180,3 +218,19 @@ object OptionFoldable extends Foldable[Option] {
     ???
 }
 
+object TestMonoidLaw extends App {
+
+  import Monoid._
+
+  val rng = Simple(Random.nextLong())
+
+  val strGen: Gen[String] = for {
+    length      <- Gen.choose(1, 20)
+    listOfChars <- Gen.listOfN(length, Gen.asciiChar)
+  } yield listOfChars.mkString("")
+
+  run(monoidLaws(stringMonoid, strGen))
+
+  run(monoidLaws(intAddition, Gen.choose(Int.MinValue, Int.MaxValue)))
+
+}

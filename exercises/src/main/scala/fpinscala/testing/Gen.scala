@@ -144,6 +144,10 @@ object Gen {
 
   def boolean: Gen[Boolean] = Gen(State(RNG.boolean))
 
+  def asciiChar: Gen[Char] = Gen(State(RNG.asciiChar))
+
+  def integer: Gen[Int] = Gen(State(RNG.int))
+
   def double: Gen[Double] = Gen(State(RNG.double))
 
   def pair[A](g: Gen[A]): Gen[(A, A)] = Gen(listOfN(2, g).sample.map { case Seq(a, b) => (a, b) })
@@ -216,7 +220,7 @@ object ListSpec extends App {
 
   val smallInt = Gen.choose(0, 100)
 
-  val maxProp = forAll(listOf1(smallInt)) { ns =>
+  val maxProp: Prop = forAll(listOf1(smallInt)) { ns =>
     val sorted = ns.sorted
     ns.forall(sorted.head <= _)
   }
