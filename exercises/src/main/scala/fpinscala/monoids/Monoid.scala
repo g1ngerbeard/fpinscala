@@ -99,14 +99,24 @@ object Monoid {
     }
 
   def ordered(ints: IndexedSeq[Int]): Boolean =
-    ???
+    foldMap(
+      ints.toList,
+      new Monoid[(Int, Boolean)] {
+        def op(a1: (Int, Boolean), a2: (Int, Boolean)): (Int, Boolean) =
+          (a1, a2) match {
+            case ((i1, isOrdered), (i2, _)) if isOrdered => (i2, i2 >= i1)
+            case _                                       => (Int.MinValue, false)
+          }
+        def zero: (Int, Boolean) = (Int.MinValue, true)
+      }
+    )(i => (i, true))._2
 
   sealed trait WC
   case class Stub(chars: String)                            extends WC
   case class Part(lStub: String, words: Int, rStub: String) extends WC
 
-  import fpinscala.parallelism.Nonblocking._
   import fpinscala.parallelism.Nonblocking.Par._
+  import fpinscala.parallelism.Nonblocking._
 
   def par[A](m: Monoid[A]): Monoid[Par[A]] =
     new Monoid[Par[A]] {
@@ -122,7 +132,6 @@ object Monoid {
 //      .flatMap(Par.sequenceBalanced(v.map(a => Par.delay(f(a))))) { s =>
 //        .sequenceBalanced(
 
-
 //          v.map(a => )(a => Par.delay(f(a))))
 //        )
 
@@ -135,9 +144,22 @@ object Monoid {
 //      par(m).op(parFoldMap(lAs, m)(f), parFoldMap(rAs, m)(f))
 //    }
 
-  //  val wcMonoid: Monoid[WC] = ???
+  val wcMonoid: Monoid[WC] = new Monoid[WC] {
+
+    def op(a1: WC, a2: WC): WC = (a1, a2) match {
+      case (Stub(w1), Stub(w2))                   => Stub(w1 concat w2)
+      case (Stub(w1), Part(ls2, ws, rd2))         => Part(w1 concat ls2, ws, rd2)
+      case (Part(ls1, ws, rd1), Stub(w2))         => Part(ls1, ws, rd1 concat w2)
+      case (Part(ls1, ws1, _), Part(_, ws2, rs2)) => Part(ls1, ws1 + ws2 + 1, rs2)
+    }
+
+    def zero: WC = Stub("")
+
+  }
 
   def count(s: String): Int = ???
+
+  // ==================================
 
   def productMonoid[A, B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
     ???
@@ -224,13 +246,38 @@ object TestMonoidLaw extends App {
 
   val rng = Simple(Random.nextLong())
 
-  val strGen: Gen[String] = for {
+  val asciiStrGen: Gen[String] = for {
     length      <- Gen.choose(1, 20)
     listOfChars <- Gen.listOfN(length, Gen.asciiChar)
   } yield listOfChars.mkString("")
 
-  run(monoidLaws(stringMonoid, strGen))
+//  run(monoidLaws(stringMonoid, strGen))
+//  run(monoidLaws(intAddition, Gen.choose(Int.MinValue, Int.MaxValue)))
 
-  run(monoidLaws(intAddition, Gen.choose(Int.MinValue, Int.MaxValue)))
+  val stubGen: Gen[Stub] = for {
+    str <- asciiStrGen
+  } yield Stub(str.replace(" ", ""))
+
+  val partGen: Gen[Part] = for {
+    lstub <- asciiStrGen
+    count <- Gen.choose(0, 99999)
+    rstub <- asciiStrGen
+  } yield Part(lstub, count, rstub)
+
+  val wcGen: Gen[WC] = Gen.oneOf(stubGen, partGen)
+
+  run(monoidLaws(wcMonoid, wcGen))
+
+}
+
+object TestOrdered extends App {
+
+  import Monoid._
+
+  val l1 = IndexedSeq(-10, 2, 3, 4, 5, 1000)
+  val l2 = IndexedSeq(-10000, 5, 10, 201, -9999, 100000)
+
+  println(ordered(l1))
+  println(ordered(l2))
 
 }

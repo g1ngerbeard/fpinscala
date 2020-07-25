@@ -164,6 +164,12 @@ object Gen {
     double.flatMap(d => if (d < p) gen1 else gen2)
   }
 
+  def oneOf[A](gen1: Gen[A], gen2: Gen[A]): Gen[A] =
+    for {
+      switch <- Gen.boolean
+      res    <- if (switch) gen1 else gen2
+    } yield res
+
 }
 
 case class SGen[+A](forSize: Int => Gen[A]) {
