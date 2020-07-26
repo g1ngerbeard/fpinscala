@@ -147,17 +147,30 @@ object Monoid {
   val wcMonoid: Monoid[WC] = new Monoid[WC] {
 
     def op(a1: WC, a2: WC): WC = (a1, a2) match {
-      case (Stub(w1), Stub(w2))                   => Stub(w1 concat w2)
-      case (Stub(w1), Part(ls2, ws, rd2))         => Part(w1 concat ls2, ws, rd2)
-      case (Part(ls1, ws, rd1), Stub(w2))         => Part(ls1, ws, rd1 concat w2)
-      case (Part(ls1, ws1, _), Part(_, ws2, rs2)) => Part(ls1, ws1 + ws2 + 1, rs2)
+      case (Stub(w1), Stub(w2))           => Stub(w1 concat w2)
+      case (Stub(w1), Part(ls2, ws, rd2)) => Part(w1 concat ls2, ws, rd2)
+      case (Part(ls1, ws, rd1), Stub(w2)) => Part(ls1, ws, rd1 concat w2)
+      case (Part(ls1, ws1, rs1), Part(ls2, ws2, rs2)) =>
+        val ws = if (rs1.nonEmpty || ls2.nonEmpty) {
+          ws1 + ws2 + 1
+        } else {
+          ws1 + ws2
+        }
+        Part(ls1, ws, rs2)
+
     }
 
     def zero: WC = Stub("")
-
   }
 
-  def count(s: String): Int = ???
+  def count(s: String): Int =
+    foldMap(s.toList, wcMonoid) {
+      case ' ' | ',' | '.' => Part("", 0, "")
+      case c               => Stub(c.toString)
+    } match {
+      case Stub(_)       => 0
+      case Part(_, c, _) => c
+    }
 
   // ==================================
 
@@ -279,5 +292,14 @@ object TestOrdered extends App {
 
   println(ordered(l1))
   println(ordered(l2))
+
+}
+
+object TestCount extends App {
+
+  import Monoid._
+
+  println(count("lor foo foo, sit amet "))
+  println(count(" ooo ,foo foo, sit amet blah "))
 
 }
