@@ -15,12 +15,12 @@ trait Monoid[A] {
 
 object Monoid {
 
-  val stringMonoid = new Monoid[String] {
+  val stringMonoid: Monoid[String] = new Monoid[String] {
     def op(a1: String, a2: String) = a1 + a2
     val zero                       = ""
   }
 
-  def listMonoid[A] = new Monoid[List[A]] {
+  def listMonoid[A]: Monoid[List[A]] = new Monoid[List[A]] {
     def op(a1: List[A], a2: List[A]) = a1 ++ a2
     val zero                         = Nil
   }
@@ -175,41 +175,51 @@ object Monoid {
   // ==================================
 
   def productMonoid[A, B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
-    ???
+    new Monoid[(A, B)] {
+      def op(a1: (A, B), a2: (A, B)): (A, B) = (A.op(a1._1, a2._1), B.op(a1._2, a2._2))
+      def zero: (A, B)                       = (A.zero, B.zero)
+    }
 
   def functionMonoid[A, B](B: Monoid[B]): Monoid[A => B] =
-    ???
-
-  def mapMergeMonoid[K, V](V: Monoid[V]): Monoid[Map[K, V]] =
-    ???
+    new Monoid[A => B] {
+      def op(f1: A => B, f2: A => B): A => B = a => B.op(f1(a), f2(a))
+      def zero: A => B                       = _ => B.zero
+    }
 
   def bag[A](as: IndexedSeq[A]): Map[A, Int] =
-    ???
+    foldMap(as.toList, mapMergeMonoid[A, Int](intAddition))(a => Map(a -> 1))
+
+  def mapMergeMonoid[K, V](V: Monoid[V]): Monoid[Map[K, V]] =
+    new Monoid[Map[K, V]] {
+      def zero: Map[K, V] = Map.empty
+      def op(a: Map[K, V], b: Map[K, V]): Map[K, V] =
+        (a.keySet ++ b.keySet).foldLeft(zero) { (acc, k) =>
+          acc.updated(k, V.op(a.getOrElse(k, V.zero), b.getOrElse(k, V.zero)))
+        }
+    }
 }
 
 trait Foldable[F[_]] {
   import Monoid._
 
-  def foldRight[A, B](as: F[A])(z: B)(f: (A, B) => B): B =
-    ???
+  def foldRight[A, B](as: F[A])(z: B)(f: (A, B) => B): B = ???
 
-  def foldLeft[A, B](as: F[A])(z: B)(f: (B, A) => B): B =
-    ???
+  def foldLeft[A, B](as: F[A])(z: B)(f: (B, A) => B): B = ???
 
-  def foldMap[A, B](as: F[A])(f: A => B)(mb: Monoid[B]): B =
-    ???
+  def foldMap[A, B](as: F[A])(f: A => B)(mb: Monoid[B]): B = ???
 
   def concatenate[A](as: F[A])(m: Monoid[A]): A =
-    ???
+    foldLeft(as)(m.zero)(m.op)
 
-  def toList[A](as: F[A]): List[A] =
-    ???
+  def toList[A](as: F[A]): List[A] = foldMap(as)(List(_))(listMonoid)
 }
 
 object ListFoldable extends Foldable[List] {
-  override def foldRight[A, B](as: List[A])(z: B)(f: (A, B) => B) =
+
+  override def foldRight[A, B](as: List[A])(z: B)(f: (A, B) => B): B =
     ???
-  override def foldLeft[A, B](as: List[A])(z: B)(f: (B, A) => B) =
+
+  override def foldLeft[A, B](as: List[A])(z: B)(f: (B, A) => B): B =
     ???
   override def foldMap[A, B](as: List[A])(f: A => B)(mb: Monoid[B]): B =
     ???
@@ -225,10 +235,13 @@ object IndexedSeqFoldable extends Foldable[IndexedSeq] {
 }
 
 object StreamFoldable extends Foldable[Stream] {
+
   override def foldRight[A, B](as: Stream[A])(z: B)(f: (A, B) => B) =
     ???
   override def foldLeft[A, B](as: Stream[A])(z: B)(f: (B, A) => B) =
     ???
+
+  override def foldMap[A, B](as: Stream[A])(f: A => B)(mb: Monoid[B]): B = ???
 }
 
 sealed trait Tree[+A]
@@ -245,6 +258,7 @@ object TreeFoldable extends Foldable[Tree] {
 }
 
 object OptionFoldable extends Foldable[Option] {
+
   override def foldMap[A, B](as: Option[A])(f: A => B)(mb: Monoid[B]): B =
     ???
   override def foldLeft[A, B](as: Option[A])(z: B)(f: (B, A) => B) =
@@ -279,8 +293,9 @@ object TestMonoidLaw extends App {
 
   val wcGen: Gen[WC] = Gen.oneOf(stubGen, partGen)
 
-  run(monoidLaws(wcMonoid, wcGen))
+//  run(monoidLaws(wcMonoid, wcGen))
 
+  run(monoidLaws(productMonoid(stringMonoid, intAddition), asciiStrGen ** Gen.integer))
 }
 
 object TestOrdered extends App {
@@ -295,11 +310,13 @@ object TestOrdered extends App {
 
 }
 
-object TestCount extends App {
+object TestMisc extends App {
 
   import Monoid._
 
-  println(count("lor foo foo, sit amet "))
-  println(count(" ooo ,foo foo, sit amet blah "))
+  require(count("lor foo foo, sit amet ") == 4)
+  require(count(" ooo ,foo foo, sit amet blah ") == 6)
+
+  require(bag(IndexedSeq("a", "a", "c", "b", "c", "a")) == Map("a" -> 3, "c" -> 2, "b" -> 1))
 
 }
